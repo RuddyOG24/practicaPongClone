@@ -47,4 +47,20 @@ public class BallController : MonoBehaviour
         rb.velocity = Vector2.zero;
         isMoving = false;
     }
+
+    public void ResetBall(int direction = 0)
+    {
+        // Detener y centrar
+        rb.velocity = Vector2.zero;
+        isMoving = false;
+        transform.position = Vector3.zero;
+
+        // Relanzar (opcionalmente hacia un lado específico)
+        int dirX = direction != 0 ? direction : (Random.value < 0.5f ? -1 : 1);
+        float y = Random.Range(-1f, 1f);
+        Vector2 dir = new Vector2(dirX, y).normalized;
+
+        rb.velocity = dir * speed;
+        isMoving = true;
+    }
 }
