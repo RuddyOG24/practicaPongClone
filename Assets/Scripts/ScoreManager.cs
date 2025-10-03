@@ -2,95 +2,58 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-
 public class ScoreManager : MonoBehaviour
 {
     [Header("UI")]
-    public Text scoreText;          // "L : R"
-    public Text highScoreText;      // opcional: texto para mostrar High Score
-
-    [Header("Límites de gol")]
-    public float goalX = 9f;        // mismo valor que usabas (±9f)
+    public Text scoreText;       // "L : R"
+    public Text highScoreText;   // opcional
+    public float serveDelay = 0.75f;
 
     [Header("Referencias")]
-    public BallController ball;     // arrastra tu Ball en el inspector
+    public BallController ball;
 
     private int leftScore = 0;
     private int rightScore = 0;
 
-    // Evita sumar múltiples veces en el mismo “cruce” de la pelota
-    private bool goalCooldown = false;
-
     void Start()
     {
-        // Mostrar High Score guardado (si no existe, 0)
-        int high = PlayerPrefs.GetInt("HighScore", 0);
-        if (highScoreText != null)
-            highScoreText.text = "High Score: " + high;
-
-        UpdateScoreUI();
+        UpdateUI();
+        if (ball != null) ball.ServeRandom(); // primer saque aleatorio
     }
 
-    void Update()
+    // Llamado por GoalZone: isRightGoal=true si anotaron en el arco derecho
+    public void RegisterGoal(bool isRightGoal)
     {
-        if (ball == null) return;
+        if (isRightGoal)
+            leftScore++;    // si entró en el arco derecho, punto para la izquierda
+        else
+            rightScore++;   // si entró en el arco izquierdo, punto para la derecha
 
-        // Revisa si la pelota sale por los lados (derecha = punto para left; izquierda = punto para right)
-        if (!goalCooldown && ball.transform.position.x > goalX)
-        {
-            leftScore++;
-            OnScore();
-        }
-        else if (!goalCooldown && ball.transform.position.x < -goalX)
-        {
-            rightScore++;
-            OnScore();
-        }
+        UpdateUI();
+
+        // Detener y re-servir
+        ball.DeactivateOnGoal();
+        StartCoroutine(ServeAfterDelayRandom());
     }
 
-    void OnScore()
+    IEnumerator ServeAfterDelayRandom()
     {
-        UpdateScoreUI();
-        SaveHighScoreIfNeeded();
-
-        // Resetea la pelota y activa un breve cooldown para evitar dobles conteos
-        ResetBall();
-        StartCoroutine(GoalCooldown());
+        yield return new WaitForSeconds(serveDelay);
+        ball.ServeRandom(); // siempre desde el centro, izquierda o derecha aleatorio
     }
 
-    IEnumerator GoalCooldown()
+    void UpdateUI()
     {
-        goalCooldown = true;
-        yield return new WaitForSeconds(0.5f); // medio segundo alcanza
-        goalCooldown = false;
+        if (scoreText) scoreText.text = $"{leftScore} : {rightScore}";
+        if (highScoreText) highScoreText.text = $"High: {Mathf.Max(leftScore, rightScore)}";
     }
 
-    void ResetBall()
+    public void ResetMatch()
     {
-        // reposiciona y relanza usando tu BallController
-        ball.transform.position = Vector3.zero;
-        ball.ResetBall(); // ✅ ya lo tenías funcionando
-    }
-
-    void UpdateScoreUI()
-    {
-        if (scoreText != null)
-            scoreText.text = leftScore + " : " + rightScore;
-    }
-
-    void SaveHighScoreIfNeeded()
-    {
-        // Métrica simple: suma total del marcador
-        int total = leftScore + rightScore;
-        int currentHigh = PlayerPrefs.GetInt("HighScore", 0);
-
-        if (total > currentHigh)
-        {
-            PlayerPrefs.SetInt("HighScore", total);
-            PlayerPrefs.Save();
-
-            if (highScoreText != null)
-                highScoreText.text = "High Score: " + total;
-        }
+        leftScore = rightScore = 0;
+        UpdateUI();
+        StopAllCoroutines();
+        ball.DeactivateOnGoal();
+        StartCoroutine(ServeAfterDelayRandom());
     }
 }

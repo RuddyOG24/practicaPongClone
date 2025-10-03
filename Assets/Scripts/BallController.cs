@@ -1,66 +1,106 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody2D), typeof(Collider2D))]
 public class BallController : MonoBehaviour
 {
-    public float speed = 8f;
+    [Header("Velocidad")]
+    public float initialSpeed = 7f;
+    public float speedIncrement = 0.5f;
+    public float maxSpeed = 14f;
+
     private Rigidbody2D rb;
-    private bool isMoving = false;
+    private Collider2D col;
+    private Vector2 dir;
+    private float currentSpeed;
+    public bool IsActive { get; private set; } = false;
+
+    public Vector2 Velocity => rb ? rb.velocity : Vector2.zero;
+
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        col = GetComponent<Collider2D>();
+        rb.gravityScale = 0f;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+    }
 
     void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
+        ServeRandom(); // primer saque
     }
 
-    public void LaunchBall()
+    /// <summary>
+    /// Saque desde el centro, recto en X; dirX: -1 izq, +1 der.
+    /// </summary>
+    public void Serve(int dirX)
     {
-        if (isMoving) return;
-
+        gameObject.SetActive(true);
         transform.position = Vector3.zero;
-        float x = Random.Range(0, 2) == 0 ? -1 : 1;
-        float y = Random.Range(-1f, 1f);
-        Vector2 direction = new Vector2(x, y).normalized;
 
-        rb.velocity = direction * speed;
-        isMoving = true;
+        currentSpeed = initialSpeed;
+        float sx = Mathf.Sign(dirX) >= 0 ? 1f : -1f;
+        dir = new Vector2(sx, 0f); // y = 0 (recto)
+        rb.velocity = dir * currentSpeed;
+
+        IsActive = true;
+        col.enabled = true;
     }
 
-    void OnCollisionEnter2D(Collision2D collision)
+    /// <summary>
+    /// Saque aleatorio: izquierda o derecha, recto.
+    /// </summary>
+    public void ServeRandom()
     {
-        if (!isMoving) return;
+        int dir = Random.value < 0.5f ? -1 : 1;
+        Serve(dir);
+    }
 
-        if (collision.gameObject.CompareTag("Paddle"))
+    /// <summary>
+    /// Usado SOLO cuando hay gol.
+    /// </summary>
+    public void DeactivateOnGoal()
+    {
+        IsActive = false;
+        rb.velocity = Vector2.zero;
+        col.enabled = false;
+        gameObject.SetActive(false);
+    }
+
+    void OnCollisionEnter2D(Collision2D c)
+    {
+        if (!IsActive) return;
+
+        // ¿Golpeó paleta?
+        bool hitPaddle = c.collider.CompareTag("Paddle") ||
+                         c.collider.GetComponent<PaddleControllerSimple>() != null;
+
+        if (hitPaddle)
         {
-            // Rebotar con ángulo según punto de contacto
-            float y = hitFactor(transform.position, collision.transform.position, collision.collider.bounds.size.y);
-            Vector2 dir = new Vector2(-rb.velocity.x, y).normalized;
-            rb.velocity = dir * speed;
+            // Ángulo según punto de impacto
+            float y = HitFactor(transform.position, c.transform.position, c.collider.bounds.size.y);
+
+            // Invertir X; aplicar componente Y
+            dir = new Vector2(-Mathf.Sign(rb.velocity.x), y).normalized;
+
+            // Aumentar velocidad con tope
+            currentSpeed = Mathf.Min(currentSpeed + speedIncrement, maxSpeed);
+            rb.velocity = dir * currentSpeed;
+        }
+        else
+        {
+            // Paredes u otros: mantener norma de velocidad
+            if (rb.velocity.sqrMagnitude > 0.0001f)
+                dir = rb.velocity.normalized;
+
+            rb.velocity = dir * currentSpeed;
         }
     }
 
-    float hitFactor(Vector2 ballPos, Vector2 paddlePos, float paddleHeight)
+    // -1 abajo .. 1 arriba
+    float HitFactor(Vector2 ballPos, Vector2 paddlePos, float paddleHeight)
     {
-        return (ballPos.y - paddlePos.y) / paddleHeight;
-    }
-
-    public void StopBall()
-    {
-        rb.velocity = Vector2.zero;
-        isMoving = false;
-    }
-
-    public void ResetBall(int direction = 0)
-    {
-        // Detener y centrar
-        rb.velocity = Vector2.zero;
-        isMoving = false;
-        transform.position = Vector3.zero;
-
-        // Relanzar (opcionalmente hacia un lado específico)
-        int dirX = direction != 0 ? direction : (Random.value < 0.5f ? -1 : 1);
-        float y = Random.Range(-1f, 1f);
-        Vector2 dir = new Vector2(dirX, y).normalized;
-
-        rb.velocity = dir * speed;
-        isMoving = true;
+        return Mathf.Clamp((ballPos.y - paddlePos.y) / (paddleHeight * 0.5f), -1f, 1f);
     }
 }
